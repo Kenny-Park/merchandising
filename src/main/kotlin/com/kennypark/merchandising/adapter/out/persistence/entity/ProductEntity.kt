@@ -9,7 +9,7 @@ import java.time.LocalDateTime
 
 @Entity
 @Table(name="PRODUCT")
-@Comment("상품")
+//@Comment("상품")
 class ProductEntity(
     @Comment("상품키")
     @NotNull @Id

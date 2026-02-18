@@ -11,7 +11,6 @@ import java.time.LocalDateTime
 // TODO: 추후 document DB로 구성하면 좋겠다.
 @Entity
 @Table(name="PRODUCT_CACHING")
-@Comment("상품")
 class ProductCachingEntity(
 
     @Comment("상품키")

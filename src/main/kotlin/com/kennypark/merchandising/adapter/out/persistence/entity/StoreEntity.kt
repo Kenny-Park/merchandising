@@ -7,7 +7,6 @@ import org.hibernate.annotations.Comment
 
 @Entity
 @Table(name="STORE")
-@Comment("점포")
 class StoreEntity(
     @Comment("상품키")
     @NotNull @Id

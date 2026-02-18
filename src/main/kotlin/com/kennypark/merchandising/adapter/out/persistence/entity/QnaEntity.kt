@@ -11,7 +11,6 @@ import java.time.LocalDateTime
 
 // 상품고시정보 마스터
 @Entity
-@Comment("상품문의")
 @Table(name="QNA")
 class QnaEntity(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) @NotNull

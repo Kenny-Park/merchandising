@@ -6,7 +6,6 @@ import org.hibernate.annotations.Comment
 
 @Entity
 @Table(name="DELIVERY_DESCRIPTION")
-@Comment("배송정보 설명 관리")
 class DeliveryDescriptionEntity(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val deliveryDescriptionKey:Long? = null
@@ -15,8 +14,8 @@ class DeliveryDescriptionEntity(
     @Comment("배송 정보 설명")
     lateinit var deliveryDescription:String
 
-    @OneToOne(mappedBy = "productDetail")
-    @Comment("프로덕트 상세 정보")
+    @OneToOne(mappedBy = "deliveryDescription")
+    //@Comment("프로덕트 상세 정보")
     lateinit var productDetail: ProductDetailEntity
 
 }

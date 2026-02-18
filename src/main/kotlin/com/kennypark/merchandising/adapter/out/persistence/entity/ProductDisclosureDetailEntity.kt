@@ -4,7 +4,6 @@ import jakarta.persistence.*
 import org.hibernate.annotations.Comment
 
 @Entity
-@Comment("상품고시정보 상세")
 @Table(name="PRODUCT_DISCLOSURE_DETAIL")
 class ProductDisclosureDetailEntity(
     @EmbeddedId

@@ -7,7 +7,6 @@ import org.hibernate.annotations.Comment
 import org.jetbrains.annotations.Nullable
 
 @Entity
-@Comment("상품 상세")
 @Table(name="PRODUCT_DETAIL")
 class ProductDetailEntity (
     @Id
@@ -16,11 +15,6 @@ class ProductDetailEntity (
     @Comment("판매자")
     @NotNull
     val seller:String = "상품판매자",
-
-    /*@Comment("브랜드키")
-    @Nullable
-    val brandKey:Long? = null,*/
-
 ){
     @Comment("상품정보")
     @Nullable
@@ -53,10 +47,9 @@ class ProductDetailEntity (
 
     @OneToOne(cascade = [CascadeType.ALL])
     @JoinColumn(name = "deliveryDescriptionKey")
-    lateinit var deliveryDescriptionKey: DeliveryDescriptionEntity
+    lateinit var deliveryDescription: DeliveryDescriptionEntity
 
     @OneToOne(mappedBy = "productDetail")
-    @Comment("프로덕트 상세 정보")
     lateinit var product: ProductEntity
 
 }

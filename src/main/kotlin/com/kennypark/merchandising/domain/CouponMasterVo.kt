@@ -25,7 +25,7 @@ data class CouponMasterVo(
     val displayYn: Int,
 ) {
     // 쿠폰 발행 수
-    @Comment("쿠폰 발행 수")
+    //@Comment("쿠폰 발행 수")
     var issuedCount: Long? = 0L
 
     companion object {
