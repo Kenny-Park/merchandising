@@ -13,9 +13,14 @@ import org.springframework.web.bind.annotation.RestController
 class MerchandisingController(
     val merchandisingUseCases: MerchandisingUseCases
 ) {
-    @GetMapping("/product/inquiries/{store}/{category}")
-    fun productInquiries(@PathVariable("store") storeCode:String,
-                         @PathVariable("category") categoryCode:String): ResponseEntity<List<ProductCachingVo?>?> {
-        return ResponseEntity.ok(merchandisingUseCases.productInquiries(storeCode, categoryCode))
+    @GetMapping("/product/inquiries/{store}/{category}/{page}/{orderType}")
+    fun productInquiries(
+        @PathVariable("store") storeCode: String,
+        @PathVariable("category") categoryCode: String,
+        @PathVariable("page") page: Int,
+        @PathVariable("orderType") orderType: String = "list-price",
+        @PathVariable("orderSort") orderSort: String = "asc"
+    ): ResponseEntity<List<ProductCachingVo?>?> {
+        return ResponseEntity.ok(merchandisingUseCases.productInquiries(storeCode, categoryCode, page, 20, orderType, orderSort))
     }
 }
