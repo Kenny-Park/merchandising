@@ -43,8 +43,8 @@ class MerchandisingService(
         categoryCode: String,
         page: Int,
         size: Int,
-        orderType:String,
-        orderSort:String,
+        orderType: String,
+        orderSort: String,
     ): List<ProductCachingVo?>? {
         var key = "merchandising:product:list"
         // store가 전체이고 categoryCode 가 존재할때
@@ -62,7 +62,7 @@ class MerchandisingService(
         }
 
         // 가격 정렬
-        val d = getCached(key, ((page - 1) * size).toLong(), ((page) * size).toLong(), orderSort)
+        val d = getCached(key, ((page - 1) * size).toLong(), ((page) * size).toLong(), orderType, orderSort)
 
         // 2. 메인 로직
         var cached = d?.let { keys ->
@@ -74,7 +74,13 @@ class MerchandisingService(
         // 3. 전체 캐시 부재 시 처리
         if (cached.isNullOrEmpty()) {
             cachingProductInquiries()
-            cached = getCached(key)?.map { objectMapper.readValue<ProductCachingVo>(it) }
+            cached = getCached(
+                key,
+                ((page - 1) * size).toLong(),
+                ((page) * size).toLong(),
+                orderType,
+                orderSort
+            )?.map { objectMapper.readValue<ProductCachingVo>(it) }
         }
 
         return cached.apply {
@@ -120,11 +126,11 @@ class MerchandisingService(
         }
     }
 
-    private fun getCached(key: String, start: Long = 0, end: Long = -1, orderSort: String = "asc"): List<String>? {
+    private fun getCached(key: String, start: Long = 0, end: Long = -1, orderType:String="list-price", orderSort: String = "asc"): List<String>? {
         return redisTemplate.opsForZSet().intersectAndStore(
             key,
-            "${key}:scores:list-price",
-            "destination:${key}:list-price"
+            "${key}:scores:${orderType}",
+            "destination:${key}:${orderType}"
         )
             .run {
                 redisTemplate.expire(
@@ -133,10 +139,10 @@ class MerchandisingService(
                 )
                 when (orderSort) {
                     "asc" -> redisTemplate.opsForZSet()
-                        .range("destination:merchandising:product:${key}:list-price", start, end)?.toList()
+                        .range("destination:${key}:${orderType}", start, end)?.toList()
 
                     else -> redisTemplate.opsForZSet()
-                        .reverseRange("destination:merchandising:product:${key}:list-price", start, end)
+                        .reverseRange("destination:${key}:${orderType}", start, end)
                         ?.toList()
                 }
             }
@@ -272,9 +278,10 @@ class MerchandisingService(
                 objectMapper.writeValueAsString(o.toVo())
             if (i % 1000 == 0) {
                 redisTemplate.opsForValue().multiSet(storeProductDetailMap)
-                redisTemplate.opsForZSet().add("store:${o.storeProductEntityPK.storeCode}:product:list:scores:list-price",
-                    storeProductDetailMap.entries.associate { (it.key to objectMapper.readValue<ProductCachingVo>(it.value).listPrice.toDouble()) }
-                        .toTypedTuples())
+                redisTemplate.opsForZSet()
+                    .add("store:${o.storeProductEntityPK.storeCode}:product:list:scores:list-price",
+                        storeProductDetailMap.entries.associate { (it.key to objectMapper.readValue<ProductCachingVo>(it.value).listPrice.toDouble()) }
+                            .toTypedTuples())
 
                 storeProductDetailMap.clear()
             }
