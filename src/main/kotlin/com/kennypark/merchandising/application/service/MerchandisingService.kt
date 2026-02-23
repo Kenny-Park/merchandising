@@ -39,14 +39,14 @@ class MerchandisingService(
 
     // 전체상품 리스트
     override fun productInquiries(
-        storeCode: String,
-        categoryCode: String,
+        storeCode: String?,
+        categoryCode: String?,
         page: Int,
         size: Int,
         orderType: String,
         orderSort: String,
     ): List<ProductCachingVo?>? {
-        var key = "merchandising:product:list"
+        var key = ""
         // store가 전체이고 categoryCode 가 존재할때
         if (storeCode == "all" && categoryCode != "all") {
             key = "merchandising:category:${categoryCode}:list"
@@ -126,7 +126,13 @@ class MerchandisingService(
         }
     }
 
-    private fun getCached(key: String, start: Long = 0, end: Long = -1, orderType:String="list-price", orderSort: String = "asc"): List<String>? {
+    private fun getCached(
+        key: String,
+        start: Long = 0,
+        end: Long = -1,
+        orderType: String = "list-price",
+        orderSort: String = "asc"
+    ): List<String>? {
         return redisTemplate.opsForZSet().intersectAndStore(
             key,
             "${key}:scores:${orderType}",
@@ -162,42 +168,42 @@ class MerchandisingService(
         productRepository.findAll().forEach { o ->
             val coupons = mutableListOf<String>()
             // 대분류
-            cuckooFilterService.exists("coupon:category:filter", o.categoryLargeKey).run {
+            cuckooFilterService.exists("coupon:category:filter", o.categoryLargeKey).apply {
                 redisTemplate.opsForSet()
                     .members("coupon:condition:category:${o.categoryLargeKey}")
-                    ?.toMutableList()?.apply {
+                    ?.toMutableList()?.also { o ->
                         coupons.addAll(
-                            this
+                            o
                         )
                     }
             }
             // 중븐류
-            cuckooFilterService.exists("coupon:category:filter", o.categoryMiddleKey).run {
+            cuckooFilterService.exists("coupon:category:filter", o.categoryMiddleKey).apply {
                 redisTemplate.opsForSet()
                     .members("coupon:condition:category:${o.categoryMiddleKey}")
-                    ?.toMutableList()?.apply {
+                    ?.toMutableList()?.also { o ->
                         coupons.addAll(
-                            this
+                            o
                         )
                     }
             }
             // 소분류
-            cuckooFilterService.exists("coupon:category:filter", o.categorySmallKey).run {
+            cuckooFilterService.exists("coupon:category:filter", o.categorySmallKey).apply {
                 redisTemplate.opsForSet()
                     .members("coupon:condition:category:${o.categorySmallKey}")
-                    ?.toMutableList()?.apply {
+                    ?.toMutableList()?.also { o ->
                         coupons.addAll(
-                            this
+                            o
                         )
                     }
             }
             // 세분류(상품)
-            cuckooFilterService.exists("coupon:category:filter", o.productKey).run {
+            cuckooFilterService.exists("coupon:category:filter", o.productKey).apply {
                 redisTemplate.opsForSet()
                     .members("coupon:condition:category:${o.productKey}")
-                    ?.toMutableList()?.apply {
+                    ?.toMutableList()?.also { o ->
                         coupons.addAll(
-                            this
+                            o
                         )
                     }
             }
@@ -287,16 +293,22 @@ class MerchandisingService(
             }
 
         }
-        redisTemplate.opsForSet()
-            .add(
-                "merchandising:store:${storeCode}:product:list",
-                *productKeyList.toTypedArray()
-            )
+        productKeyList.takeIf { it.isNotEmpty() }?.let {
+            redisTemplate.opsForSet()
+                .add(
+                    "merchandising:store:${storeCode}:product:list",
+                    *productKeyList.toTypedArray()
+                )
+        }
+
 
         // 가격 정렬
-        redisTemplate.opsForZSet().add("store:${storeCode}:product:list:scores:list-price",
-            storeProductDetailMap.entries.associate { (it.key to objectMapper.readValue<ProductCachingVo>(it.value).listPrice.toDouble()) }
-                .toTypedTuples())
+        storeProductDetailMap.entries.takeIf { it.isNotEmpty() }?.associate { (it.key to objectMapper.readValue<ProductCachingVo>(it.value).listPrice.toDouble()) }
+            ?.let {
+                redisTemplate.opsForZSet().add("store:${storeCode}:product:list:scores:list-price",
+                    it
+                        .toTypedTuples())
+            }
         redisTemplate.opsForValue().multiSet(storeProductDetailMap)
     }
 

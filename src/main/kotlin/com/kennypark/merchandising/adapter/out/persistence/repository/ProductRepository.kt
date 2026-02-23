@@ -14,4 +14,8 @@ class ProductRepository(
     fun findByProductKey(productKey: String): ProductEntity? {
         return productRepository.findByProductKey(productKey)
     }
+
+    fun saveAll(productEntity: List<ProductEntity>) {
+        productRepository.saveAll(productEntity)
+    }
 }

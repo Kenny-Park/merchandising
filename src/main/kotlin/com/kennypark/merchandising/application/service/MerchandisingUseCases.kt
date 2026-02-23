@@ -5,7 +5,7 @@ import org.springframework.stereotype.Service
 
 @Service
 interface MerchandisingUseCases {
-    fun productInquiries(storeCode:String, categoryCode: String, page:Int, size:Int, orderType:String, orderSort:String) : List<ProductCachingVo?>?
+    fun productInquiries(storeCode:String? = null, categoryCode: String? = null, page:Int, size:Int, orderType:String, orderSort:String) : List<ProductCachingVo?>?
 }
 
 class ProductInquiriesCommand(

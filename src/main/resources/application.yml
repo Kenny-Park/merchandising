@@ -1,0 +1,59 @@
+spring.profiles.active: local
+
+spring:
+  application:
+    name: merchandising
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        default_batch_fetch_size: 100
+
+
+---
+spring.config.activate.on-profile: local
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: create   # 또는 update (create는 매번 테이블을 밀고 새로 만듭니다)
+    show-sql: true        # SQL이 실제로 돌아가는지 로그로 확인
+    properties:
+      hibernate:
+        format_sql: true
+    sql:
+      init:
+        mode: always       # data.sql 실행 모드 명시
+  jpa.defer-datasource-initialization: true
+  h2:
+    console:
+      enabled: true
+  data:
+    web:
+      pageable:
+        default-page-size: 20
+  sql:
+    init: # application 실행시 sql 실행
+      username: sa
+      password:
+      schema-locations: classpath*:schema.sql
+      data-locations: classpath*:data.sql
+
+  hikari:
+    datasource:
+      main:
+        driver-class-name: org.h2.Driver
+        jdbc-url: jdbc:h2:mem:test;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+        username: sa
+        pool-name: main-db-pool
+        data-source-properties:
+          rewriteBatchedStatements: true
+logging:
+  level:
+    org:
+      springframework:
+        data:
+          redis: DEBUG
