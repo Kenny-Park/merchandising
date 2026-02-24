@@ -1,17 +1,28 @@
 package com.kennypark.merchandising.adapter.`in`.controller
 
 import com.kennypark.merchandising.adapter.out.persistence.entity.ProductEntity
+import com.kennypark.merchandising.adapter.out.persistence.entity.StandardCategoryLargeEntity
+import com.kennypark.merchandising.adapter.out.persistence.entity.StandardCategoryMediumEntity
+import com.kennypark.merchandising.adapter.out.persistence.entity.StandardCategorySmallEntity
 import com.kennypark.merchandising.adapter.out.persistence.repository.ProductRepository
+import com.kennypark.merchandising.adapter.out.persistence.repository.StandardCategoryLargeJpaRepository
+import com.kennypark.merchandising.adapter.out.persistence.repository.StandardCategoryMediumJpaRepository
+import com.kennypark.merchandising.adapter.out.persistence.repository.StandardCategorySmallJpaRepository
 import org.springframework.boot.context.event.ApplicationReadyEvent
 
 import org.springframework.context.event.EventListener
 import org.springframework.stereotype.Component
+import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
 import kotlin.random.Random
 
 @Component
 class InitSampleData(
     val productRepository: ProductRepository,
+    val standardCategoryLargeJpaRepository: StandardCategoryLargeJpaRepository,
+    val standardCategoryMediumJpaRepository: StandardCategoryMediumJpaRepository,
+    val standardCategorySmallJpaRepository: StandardCategorySmallJpaRepository
+
 ) {
     data class CategoryMap(
         val large: String,
@@ -44,6 +55,7 @@ class InitSampleData(
     )
 
     @EventListener(ApplicationReadyEvent::class)
+    @Transactional
     fun generateProductSamples() {
         val products = mutableListOf<ProductEntity>()
         val random = Random(System.currentTimeMillis())
@@ -60,9 +72,6 @@ class InitSampleData(
             // 3. Entity 생성 및 필드 주입
             val entity = ProductEntity(
                 productKey = "PROD-${i.toString().padStart(5, '0')}",
-                categoryLargeKey = cat.large,
-                categoryMiddleKey = cat.middle,
-                categorySmallKey = cat.small
             ).apply {
                 this.listPrice = listPrice
                 this.discountRate = discountRate
@@ -76,6 +85,9 @@ class InitSampleData(
                 this.displayStartDate = LocalDateTime.now()
                 this.displayEndDate = LocalDateTime.now().plusMonths(1)
                 this.expireAt = LocalDateTime.now().plusYears(1)
+                this.standardCategoryLarge = standardCategoryLargeJpaRepository.findById(cat.large).orElseThrow()
+                this.standardCategoryMedium = standardCategoryMediumJpaRepository.findById(cat.middle).orElseThrow()
+                this.standardCategorySmall = standardCategorySmallJpaRepository.findById(cat.small).orElseThrow()
                 // 1:1 관계인 상세 데이터 가상 할당 (필요 시)
                 /*this.productDetail = ProductDetailEntity().apply {
                     // detail 필드들 세팅...

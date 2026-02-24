@@ -14,12 +14,12 @@ class ProductEntity(
     @Comment("상품키")
     @NotNull @Id
     val productKey: String,
-    @Comment("대분류")
+    /*@Comment("대분류")
     val categoryLargeKey: String,
     @Comment("중분류")
     val categoryMiddleKey: String,
     @Comment("소분류")
-    val categorySmallKey: String,
+    val categorySmallKey: String,*/
     ) {
 
     @Comment("정상가")
@@ -58,6 +58,19 @@ class ProductEntity(
     @Nullable
     var displayEndDate:LocalDateTime? = null
 
+    @ManyToOne(cascade = [CascadeType.ALL])
+    @JoinColumn(name = "categoryLargeKey")
+    lateinit var standardCategoryLarge : StandardCategoryLargeEntity
+
+    @ManyToOne(cascade = [CascadeType.ALL])
+    @JoinColumn(name = "categoryMediumKey")
+    lateinit var standardCategoryMedium : StandardCategoryMediumEntity
+
+    @ManyToOne(cascade = [CascadeType.ALL])
+    @JoinColumn(name = "categorySmallKey")
+    lateinit var standardCategorySmall : StandardCategorySmallEntity
+
+
     @OneToOne(cascade = [CascadeType.ALL])
     @JoinColumn(name = "productKey")
     lateinit var productDetail:ProductDetailEntity
@@ -67,12 +80,12 @@ class ProductEntity(
     fun toProductCachingVo(): ProductCachingVo {
         return ProductCachingVo(
             productKey = this.productKey,
-            categoryLargeKey = this.categoryLargeKey,
-            categoryMiddleKey = this.categoryMiddleKey,
-            categorySmallKey = this.categorySmallKey,
-            categoryLargeName = "",
-            categoryMiddleName = "",
-            categorySmallName = "",
+            categoryLargeKey = this.standardCategoryLarge.categoryLargeKey,
+            categoryMiddleKey = this.standardCategoryMedium.categoryMediumKey,
+            categorySmallKey = this.standardCategorySmall.categorySmallKey,
+            categoryLargeName = this.standardCategoryLarge.categoryLargeKeyName?:"",
+            categoryMiddleName = this.standardCategoryMedium.categoryMediumKeyName?:"",
+            categorySmallName = this.standardCategorySmall.categorySmallKeyName?:"",
 
             discountedPrice = this.discountedPrice,
             discountRate = this.discountRate,

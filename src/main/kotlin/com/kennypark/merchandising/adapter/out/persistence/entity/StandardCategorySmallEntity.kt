@@ -2,6 +2,7 @@ package com.kennypark.merchandising.adapter.out.persistence.entity
 
 import jakarta.persistence.Entity
 import jakarta.persistence.Id
+import jakarta.persistence.OneToOne
 import jakarta.persistence.Table
 import org.hibernate.annotations.Comment
 
@@ -18,4 +19,7 @@ class StandardCategorySmallEntity (
 ) {
     @Comment("소분류명")
     var categorySmallKeyName: String? = null
+
+    @OneToOne(mappedBy = "standardCategorySmall")
+    lateinit var product: ProductEntity
 }
