@@ -7,4 +7,5 @@ import org.springframework.stereotype.Repository
 
 @Repository
 interface StandardCategoryMediumJpaRepository :JpaRepository<StandardCategoryMediumEntity, String> {
+    fun findByCategoryMediumKey(categoryMediumKey:String):StandardCategoryMediumEntity?
 }

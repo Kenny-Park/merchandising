@@ -1,6 +1,6 @@
 package com.kennypark.merchandising.adapter.`in`.controller
 
-import com.kennypark.merchandising.application.service.MerchandisingUseCases
+import com.kennypark.merchandising.application.port.`in`.MerchandisingUseCases
 import com.kennypark.merchandising.domain.ProductCachingVo
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*

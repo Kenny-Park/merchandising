@@ -10,7 +10,7 @@ import java.time.format.DateTimeFormatter
 class ProductCachingVo (
     val productKey: String? = null,
     val categoryLargeKey: String,
-    val categoryMiddleKey: String,
+    val categoryMediumKey: String,
     val categorySmallKey: String,
     val categoryLargeName: String,
     val categoryMiddleName: String,

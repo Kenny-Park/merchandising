@@ -6,4 +6,5 @@ import org.springframework.stereotype.Repository
 
 @Repository
 interface StandardCategoryLargeJpaRepository :JpaRepository<StandardCategoryLargeEntity, String> {
+    fun findByCategoryLargeKey(categoryLargeKey:String):StandardCategoryLargeEntity?
 }

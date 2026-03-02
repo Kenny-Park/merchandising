@@ -5,9 +5,11 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.kennypark.merchandising.adapter.out.persistence.entity.ProductEntity
-import com.kennypark.merchandising.adapter.out.persistence.repository.ProductRepository
-import com.kennypark.merchandising.adapter.out.persistence.repository.StoreProductRepository
-import com.kennypark.merchandising.adapter.out.persistence.repository.StoreRepository
+import com.kennypark.merchandising.adapter.out.persistence.entity.StandardCategoryLargeEntity
+import com.kennypark.merchandising.adapter.out.persistence.entity.StandardCategoryMediumEntity
+import com.kennypark.merchandising.adapter.out.persistence.entity.StandardCategorySmallEntity
+import com.kennypark.merchandising.adapter.out.persistence.repository.*
+import com.kennypark.merchandising.application.port.`in`.MerchandisingUseCases
 import com.kennypark.merchandising.domain.CouponMasterVo
 import com.kennypark.merchandising.domain.ProductCachingVo
 import com.kennypark.merchandising.domain.StoreProductVo
@@ -32,6 +34,10 @@ class MerchandisingService(
     val redisTemplate: StringRedisTemplate,
     private val redissonClient: RedissonClient,
 
+    val standardCategoryLargeRepository: StandardCategoryLargeRepository,
+    val standardCategoryMediumRepository: StandardCategoryMediumRepository,
+    val standardCategorySmallRepository: StandardCategorySmallRepository,
+
     ) : MerchandisingUseCases {
     // redis 에서 쿠폰정보 가져옴 & 캐싱디비에 저장
     private final val objectMapper: ObjectMapper =
@@ -49,10 +55,10 @@ class MerchandisingService(
         var key = ""
         // store가 전체이고 categoryCode 가 존재할때
         if (storeCode == "all" && categoryCode != "all") {
-            key = "merchandising:category:${categoryCode}:list"
+            key = "merchandising:product:${categoryCode}:list"
             // store가 존재하고 categoryCode 가 존재 일때
         } else if (storeCode != "all" && categoryCode != "all") {
-            key = "merchandising:store:${storeCode}:category:${categoryCode}:list"
+            key = "merchandising:store:${storeCode}:product:${categoryCode}:list"
             // store가 존재하고 categoryCode 가 전체 일때
         } else if (storeCode != "all") {
             // store가 전체이고 categoryCode 가 전체 일때
@@ -70,6 +76,7 @@ class MerchandisingService(
                 getOrUpdateCache(index, raw, keys[index])
             }
         }
+        cached = cached?.filterNotNull()
 
         // 3. 전체 캐시 부재 시 처리
         if (cached.isNullOrEmpty()) {
@@ -80,29 +87,44 @@ class MerchandisingService(
                 ((page) * size).toLong(),
                 orderType,
                 orderSort
-            )?.map { objectMapper.readValue<ProductCachingVo>(it) }
+            )?.let { keys ->
+                redisTemplate.opsForValue().multiGet(keys)?.mapIndexed { index, raw ->
+                    getOrUpdateCache(index, raw, keys[index])
+                }
+            }
         }
 
-        return cached.apply {
-            //TODO: 정렬 또는 조건 붙히기
-            // 점 상품의 금액으로 변경
-            val keys = this?.map { "store:${storeCode}:product:${it.productKey}" }
-            if (key.contains("store")) {
-                redisTemplate.opsForValue().multiGet(keys!!)?.forEachIndexed { index, oo ->
-                    val storePrice = objectMapper.readValue<StoreProductVo>(oo)
-                    if (this?.isNotEmpty() == true) {
-                        this[index].listPrice = storePrice.listPrice
+        val keys = mutableListOf<String>()
+        if (key.contains("store:") && key.contains("product:")) {
+            val results = mutableListOf<ProductCachingVo>()
+            cached?.map { item ->
+                if (key.contains("store:") && key.contains("product:")) {
+                    item?.let {
+                        keys.add("store:${storeCode}:product:${it.productKey}")
+                        results.add(it)
                     }
                 }
             }
+            redisTemplate.opsForValue().multiGet(keys)?.forEachIndexed { index, oo ->
+                val storePrice = objectMapper.readValue<StoreProductVo>(oo)
+                if (keys.size > 0) {
+                    keys[index].also { o ->
+                        results[index].listPrice = storePrice.listPrice
+                    }
+                }
+            }
+            return results
+        } else {
+            return cached
         }
     }
 
     //cacheKey = product Key
-    private fun getOrUpdateCache(index: Int, rawData: String?, cacheKey: String): ProductCachingVo {
+    private fun getOrUpdateCache(index: Int, rawData: String?, cacheKey: String): ProductCachingVo? {
         // 데이터가 없으면 즉시 생성하여 반환
-        if (rawData == null) return cachingProductInquiry(cacheKey)!!
-
+        if (rawData == null) {
+            return cachingProductInquiry(cacheKey)
+        }
         val vo = objectMapper.readValue<ProductCachingVo>(rawData)
         val isExpired = System.currentTimeMillis() > vo.expireAt!!.atZone(ZoneId.systemDefault()).toEpochSecond()
 
@@ -110,7 +132,7 @@ class MerchandisingService(
         if (!isExpired) return vo
 
         // 만료된 경우 Lock 획득 시도
-        val lock = redissonClient.getLock("products:cache:lock:$cacheKey")
+        val lock = redissonClient.getLock("product:cache:lock:$cacheKey")
         return if (lock.tryLock(0, 30, TimeUnit.SECONDS)) {
             CompletableFuture.runAsync {
                 try {
@@ -132,22 +154,31 @@ class MerchandisingService(
         orderType: String = "list-price",
         orderSort: String = "asc"
     ): List<String>? {
+
+        val destinationKey = fun(key: String, orderType: String): String {
+            return "destination:${key}:${orderType}"
+        }(key, orderType)
+
+        val scoreKey = fun(key: String, orderType: String): String {
+            return "${key}:scores:${orderType}"
+        }(key, orderType)
+
         return redisTemplate.opsForZSet().intersectAndStore(
             key,
-            "${key}:scores:${orderType}",
-            "destination:${key}:${orderType}"
+            scoreKey,
+            destinationKey
         )
             .run {
                 redisTemplate.expire(
-                    "destination:merchandising:product:${key}:list-price",
+                    destinationKey,
                     Duration.ofMinutes(1)
                 )
                 when (orderSort) {
                     "asc" -> redisTemplate.opsForZSet()
-                        .range("destination:${key}:${orderType}", start, end)?.toList()
+                        .range(destinationKey, start, end)?.toList()
 
                     else -> redisTemplate.opsForZSet()
-                        .reverseRange("destination:${key}:${orderType}", start, end)
+                        .reverseRange(destinationKey, start, end)
                         ?.toList()
                 }
             }
@@ -208,18 +239,21 @@ class MerchandisingService(
             }
 
             redisTemplate.opsForValue().multiGet(coupons)?.forEach { s ->
-                objectMapper.readValue<List<CouponMasterVo>>(s).filter { it.discountType == 1 }.maxBy { it.value }.run {
-                    val couponPrice = (o.discountedPrice.toFloat() * ((1000 - this.value).toFloat() / 100.2f)).toLong()
-                    if (o.couponPrice >= couponPrice) {
-                        o.couponDiscountRate = this.value.toInt()
-                        o.couponPrice = couponPrice
-                        o.expireAt = expireAt
+                objectMapper.readValue<List<CouponMasterVo>>(s).filter { it.discountType == 1 }.maxBy { it.value }
+                    .run {
+                        val couponPrice =
+                            (o.discountedPrice.toFloat() * ((1000 - this.value).toFloat() / 100.2f)).toLong()
+                        if (o.couponPrice >= couponPrice) {
+                            o.couponDiscountRate = this.value.toInt()
+                            o.couponPrice = couponPrice
+                            o.expireAt = expireAt
+                        }
                     }
-                }
             }
             // map에 저장
             resultMap["product:${o.productKey}"] = objectMapper.writeValueAsString(o.toProductCachingVo())
             productList.add("product:${o.productKey}")
+            productResult.add(o.toProductCachingVo())
         }
 
         // 레디스에 프로덕트 정보 캐싱
@@ -230,15 +264,15 @@ class MerchandisingService(
 
         // 카테고리별 캐싱
         val larges = productResult.groupBy { it.categoryLargeKey }
-        val middles = productResult.groupBy { it.categoryMiddleKey }
+        val mediums = productResult.groupBy { it.categoryMediumKey }
         val smalls = productResult.groupBy { it.categorySmallKey }
 
 
         larges.forEach {
             cachingProductInquiries("large", it.key, it.value)
         }
-        middles.forEach {
-            cachingProductInquiries("middle", it.key, it.value)
+        mediums.forEach {
+            cachingProductInquiries("medium", it.key, it.value)
         }
         smalls.forEach {
             cachingProductInquiries("small", it.key, it.value)
@@ -285,7 +319,11 @@ class MerchandisingService(
                 redisTemplate.opsForValue().multiSet(storeProductDetailMap)
                 redisTemplate.opsForZSet()
                     .add("store:${o.storeProductEntityPK.storeCode}:product:list:scores:list-price",
-                        storeProductDetailMap.entries.associate { (it.key to objectMapper.readValue<ProductCachingVo>(it.value).listPrice.toDouble()) }
+                        storeProductDetailMap.entries.associate {
+                            (it.key to objectMapper.readValue<ProductCachingVo>(
+                                it.value
+                            ).listPrice.toDouble())
+                        }
                             .toTypedTuples())
 
                 storeProductDetailMap.clear()
@@ -326,14 +364,14 @@ class MerchandisingService(
         }
 
         val larges = list?.groupBy { it.categoryLargeKey }
-        val middles = list?.groupBy { it.categoryMiddleKey }
+        val mediums = list?.groupBy { it.categoryMediumKey }
         val smalls = list?.groupBy { it.categorySmallKey }
 
         larges?.forEach {
             cachingProductInquiries(storeCode, "large", it.key, it.value)
         }
-        middles?.forEach {
-            cachingProductInquiries(storeCode, "middle", it.key, it.value)
+        mediums?.forEach {
+            cachingProductInquiries(storeCode, "medium", it.key, it.value)
         }
         smalls?.forEach {
             cachingProductInquiries(storeCode, "small", it.key, it.value)
@@ -353,7 +391,7 @@ class MerchandisingService(
             redisTemplate.opsForSet()
                 .add(
                     "merchandising:store:${storeCode}:category:${key}:list",
-                    *value.map { it.categoryMiddleKey }.toTypedArray()
+                    *value.map { it.categoryMediumKey }.toTypedArray()
                 )
         } else if (categoryType == "middle") {
             redisTemplate.opsForSet()
@@ -379,25 +417,21 @@ class MerchandisingService(
 
     // 상품 리스트
     private fun cachingProductInquiries(categoryType: String, key: String, value: List<ProductCachingVo>) {
-        redisTemplate.unlink("merchandising:category:${key}:list")
-        if (categoryType == "large") {
-            redisTemplate.opsForSet()
-                .add("merchandising:category:${key}:list", *value.map { it.categoryMiddleKey }.toTypedArray())
-        } else if (categoryType == "middle") {
-            redisTemplate.opsForSet()
-                .add("merchandising:category:${key}:list", *value.map { it.categorySmallKey }.toTypedArray())
-        } else if (categoryType == "small") {
-            redisTemplate.opsForSet()
-                .add("merchandising:category:${key}:list", *value.map { it.productKey }.toTypedArray())
+        // 대분류는 중분류 순번으로 정리
+        redisTemplate.unlink("merchandising:product:${key}:list")
+        // 리스트
+        redisTemplate.opsForSet()
+            .add(
+                "merchandising:product:${key}:list",
+                *value.map { "product:${it.productKey}" }.toTypedArray()
+            )
+        // 스코어
+        redisTemplate.opsForZSet()
+            .add("merchandising:product:${key}:list:scores:list-price",
+                value.associate { "product:${it.productKey}" to it.listPrice.toDouble() }
+                    .toTypedTuples())
 
-            // 가격 정렬
-            redisTemplate.opsForZSet()
-                .add("merchandising:category:${key}:list:scores:list-price",
-                    value.associate { it.productKey to it.listPrice.toDouble() }
-                        .toTypedTuples())
-
-        }
-        redisTemplate.expire("merchandising:category:${key}:list", 2, TimeUnit.HOURS)
+        redisTemplate.expire("merchandising:product:${key}:list", 2, TimeUnit.HOURS)
     }
 
     private fun couponConditionIncludes(category: String): MutableList<String>? {
@@ -414,19 +448,9 @@ class MerchandisingService(
         }
     }
 
-    // 상품 상세정보 캐싱
-    private fun cachingProductInquiry(productKey: String): ProductCachingVo? {
-        val expireAt = LocalDateTime.now()
-            .plusMinutes(25)
-        if (redisTemplate.hasKey(productKey)) {
-            redisTemplate.opsForValue().get(productKey).run {
-                this?.let { objectMapper.readValue<ProductCachingVo>(it) }
-            }.takeIf { true }?.let {
-                return it
-            }
-        }
-
-        productRepository.findByProductKey(productKey.replace("product:", ""))?.let { o ->
+    // 상품정보  JSON 형태로 레디스에 저장
+    private fun cachingProduct(productKey: String, expireAt: LocalDateTime): String? {
+        return productRepository.findByProductKey(productKey.replace("product:", ""))?.let { o ->
             val coupons = mutableListOf<String>()
             val categories = listOf(
                 "all",
@@ -453,15 +477,18 @@ class MerchandisingService(
             }
 
             redisTemplate.opsForValue().multiGet(coupons)?.forEach { s ->
-                objectMapper.readValue<List<CouponMasterVo>>(s).filter { it.discountType == 1 }.maxBy { it.value }.run {
-                    val couponPrice = (o.discountedPrice.toFloat() * ((1000 - this.value).toFloat() / 100.2f)).toLong()
-                    if (o.couponPrice >= couponPrice) {
-                        o.couponDiscountRate = this.value.toInt()
-                        o.couponPrice = couponPrice
-                        o.expireAt = expireAt
+                objectMapper.readValue<List<CouponMasterVo>>(s).filter { it.discountType == 1 }.maxBy { it.value }
+                    .run {
+                        val couponPrice =
+                            (o.discountedPrice.toFloat() * ((1000 - this.value).toFloat() / 100.2f)).toLong()
+                        if (o.couponPrice >= couponPrice) {
+                            o.couponDiscountRate = this.value.toInt()
+                            o.couponPrice = couponPrice
+                            o.expireAt = expireAt
+                        }
                     }
-                }
             }
+
             redisTemplate.opsForValue().set(
                 "product:${o.productKey}",
                 objectMapper.writeValueAsString(o.toProductCachingVo()), 40, TimeUnit.MINUTES
@@ -470,70 +497,102 @@ class MerchandisingService(
             // 리스트 삭제 및 저장
             redisTemplate.opsForSet().remove("merchandising:product:list", o.productKey)
             redisTemplate.opsForSet()
-                .remove(
-                    "merchandising:category:${o.standardCategoryLarge.categoryLargeKey}:list",
-                    o.standardCategoryMedium.categoryMediumKey
-                )
+                .remove("merchandising:product:${o.standardCategorySmall.categorySmallKey}:list", o.productKey)
             redisTemplate.opsForSet()
-                .remove(
-                    "merchandising:category:${o.standardCategoryMedium.categoryMediumKey}:list",
-                    o.standardCategorySmall.categorySmallKey
-                )
+                .remove("merchandising:product:${o.standardCategoryMedium.categoryMediumKey}:list", o.productKey)
             redisTemplate.opsForSet()
-                .remove("merchandising:category:${o.standardCategorySmall.categorySmallKey}:list", o.productKey)
+                .remove("merchandising:product:${o.standardCategoryLarge.categoryLargeKey}:list", o.productKey)
 
-            // 장렬정보 삭제
+            // 정렬정보 삭제
             redisTemplate.opsForZSet()
                 .remove(
-                    "merchandising:category:${o.standardCategorySmall.categorySmallKey}:list:scores:list-price",
+                    "merchandising:product:list:scores:list-price",
+                    o.productKey
+                )
+            redisTemplate.opsForZSet()
+                .remove(
+                    "merchandising:product:${o.standardCategorySmall.categorySmallKey}:list:scores:list-price",
+                    o.productKey
+                )
+            redisTemplate.opsForZSet()
+                .remove(
+                    "merchandising:product:${o.standardCategoryMedium.categoryMediumKey}:list:scores:list-price",
+                    o.productKey
+                )
+            redisTemplate.opsForZSet()
+                .remove(
+                    "merchandising:product:${o.standardCategoryLarge.categoryLargeKey}:list:scores:list-price",
                     o.productKey
                 )
 
             // 리스트에서 값 재설정
             redisTemplate.opsForSet()
                 .add("merchandising:product:list", o.productKey)
+
             redisTemplate.opsForSet()
-                .add(
-                    "merchandising:category:${o.standardCategoryLarge.categoryLargeKey}:list",
-                    o.standardCategoryMedium.categoryMediumKey
-                )
+                .add("merchandising:product:${o.standardCategorySmall.categorySmallKey}:list", o.productKey)
             redisTemplate.opsForSet()
-                .add(
-                    "merchandising:category:${o.standardCategoryMedium.categoryMediumKey}:list",
-                    o.standardCategorySmall.categorySmallKey
-                )
+                .add("merchandising:product:${o.standardCategoryMedium.categoryMediumKey}:list", o.productKey)
             redisTemplate.opsForSet()
-                .add("merchandising:category:${o.standardCategorySmall.categorySmallKey}:list", o.productKey)
+                .add("merchandising:product:${o.standardCategoryLarge.categoryLargeKey}:list", o.productKey)
 
             // 정렬값 재 설정
             redisTemplate.opsForZSet()
                 .add(
-                    "merchandising:category:${o.standardCategorySmall.categorySmallKey}:list:scores:list-price",
+                    "merchandising:product:list:scores:list-price",
+                    setOf(DefaultTypedTuple(o.productKey, o.listPrice.toDouble()))
+                )
+            redisTemplate.opsForZSet()
+                .add(
+                    "merchandising:product:${o.standardCategorySmall.categorySmallKey}:list:scores:list-price",
+                    setOf(DefaultTypedTuple(o.productKey, o.listPrice.toDouble()))
+                )
+            redisTemplate.opsForZSet()
+                .add(
+                    "merchandising:product:${o.standardCategoryMedium.categoryMediumKey}:list:scores:list-price",
+                    setOf(DefaultTypedTuple(o.productKey, o.listPrice.toDouble()))
+                )
+            redisTemplate.opsForZSet()
+                .add(
+                    "merchandising:product:${o.standardCategoryLarge.categoryLargeKey}:list:scores:list-price",
                     setOf(DefaultTypedTuple(o.productKey, o.listPrice.toDouble()))
                 )
 
+            // 만료일 재설정
             redisTemplate.expire("merchandising:product:list", 2, TimeUnit.HOURS)
             redisTemplate.expire(
-                "merchandising:category:${o.standardCategoryLarge.categoryLargeKey}:list",
+                "merchandising:product:${o.standardCategorySmall.categorySmallKey}:list",
                 2,
                 TimeUnit.HOURS
             )
             redisTemplate.expire(
-                "merchandising:category:${o.standardCategoryMedium.categoryMediumKey}:list",
+                "merchandising:product:${o.standardCategoryMedium.categoryMediumKey}:list",
                 2,
                 TimeUnit.HOURS
             )
             redisTemplate.expire(
-                "merchandising:category:${o.standardCategorySmall.categorySmallKey}:list",
+                "merchandising:product:${o.standardCategoryLarge.categoryLargeKey}:list",
                 2,
                 TimeUnit.HOURS
             )
-
-            return o.toProductCachingVo()
+            objectMapper.writeValueAsString(o.toProductCachingVo())
         }
-        // 키가 없다면 모두 삭제하고 null return
-        redisTemplate.delete("product:${productKey}")
-        redisTemplate.opsForList().remove("merchandising:product:list", 1, productKey)
+    }
+
+    // 상품 상세정보 캐싱
+    private fun cachingProductInquiry(productKey: String): ProductCachingVo? {
+        val expireAt = LocalDateTime.now()
+            .plusMinutes(25)
+        if (redisTemplate.hasKey(productKey)) {
+            redisTemplate.opsForValue().get(productKey).run {
+                this?.let { objectMapper.readValue<ProductCachingVo>(it) }
+            }?.let {
+                return it
+            }
+        }
+        productKey.run {
+            cachingProduct(productKey, expireAt)
+        }
         return null
     }
 }

@@ -22,7 +22,7 @@ class ProductCachingEntity(
     lateinit var categoryLargeKey: String
     @Comment("중분류")
     @NotNull
-    lateinit var categoryMiddleKey: String
+    lateinit var categoryMediumKey: String
     @Comment("소분류")
     @NotNull
     lateinit var categorySmallKey: String

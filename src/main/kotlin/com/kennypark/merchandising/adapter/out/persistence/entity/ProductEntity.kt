@@ -17,7 +17,7 @@ class ProductEntity(
     /*@Comment("대분류")
     val categoryLargeKey: String,
     @Comment("중분류")
-    val categoryMiddleKey: String,
+    val categoryMediumKey: String,
     @Comment("소분류")
     val categorySmallKey: String,*/
     ) {
@@ -81,7 +81,7 @@ class ProductEntity(
         return ProductCachingVo(
             productKey = this.productKey,
             categoryLargeKey = this.standardCategoryLarge.categoryLargeKey,
-            categoryMiddleKey = this.standardCategoryMedium.categoryMediumKey,
+            categoryMediumKey = this.standardCategoryMedium.categoryMediumKey,
             categorySmallKey = this.standardCategorySmall.categorySmallKey,
             categoryLargeName = this.standardCategoryLarge.categoryLargeKeyName?:"",
             categoryMiddleName = this.standardCategoryMedium.categoryMediumKeyName?:"",
